@@ -67,7 +67,12 @@
         transition: background 0.2s ease, opacity 0.2s ease;
       }
 
-      button:active {
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      button:active:not(:disabled) {
         opacity: 0.8;
       }
 
@@ -146,7 +151,7 @@
         }
 
         thead {
-          display: none; /* Hide headers on mobile */
+          display: none;
         }
 
         tr {
@@ -184,6 +189,54 @@
         td button {
           width: 100%;
           padding: 0.6rem;
+        }
+      }
+
+      /* Pagination Controls */
+      .pagination-container {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        align-items: center;
+        justify-content: space-between;
+        margin-top: 1rem;
+        padding: 0.5rem 0;
+      }
+
+      .pagination-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .pagination-controls button {
+        width: auto;
+        padding: 0.5rem 0.8rem;
+        font-size: 0.9rem;
+      }
+
+      .page-info {
+        font-size: 0.9rem;
+        color: #555;
+      }
+
+      .items-per-page {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+        color: #555;
+      }
+
+      .items-per-page select {
+        width: auto;
+        padding: 0.4rem;
+        font-size: 0.9rem;
+      }
+
+      @media (min-width: 600px) {
+        .pagination-container {
+          flex-direction: row;
         }
       }
 
@@ -265,6 +318,25 @@
       <tbody id="booksTableBody"></tbody>
     </table>
 
+    <!-- Pagination UI -->
+    <div class="pagination-container">
+      <div class="items-per-page">
+        <label for="itemsPerPage">Rows per page:</label>
+        <select id="itemsPerPage">
+          <option value="5">5</option>
+          <option value="10" selected>10</option>
+          <option value="20">20</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+
+      <div class="pagination-controls">
+        <button id="prevPageBtn" onclick="changePage(-1)">Previous</button>
+        <span class="page-info" id="pageInfo">Page 1 of 1</span>
+        <button id="nextPageBtn" onclick="changePage(1)">Next</button>
+      </div>
+    </div>
+
     <!-- Borrow Modal -->
     <div class="modal-overlay" id="borrowModal">
       <div class="modal-box">
@@ -283,6 +355,10 @@
       const API_URL = "https://script.google.com/macros/s/AKfycbzGIsnWP3E2OL5X2sjz1CSV92imrxDRYimw4L0BAlO4igFAOtM-6CgGoNA_juyvdMxS/exec";
       let allBooks = [];
       let activeBook = null;
+
+      // Pagination state variables
+      let currentPage = 1;
+      let itemsPerPage = 10;
 
       async function loadBooks() {
         const tbody = document.getElementById("booksTableBody");
@@ -320,10 +396,23 @@
 
         if (!filtered.length) {
           tbody.innerHTML = "<tr><td colspan='6' style='text-align: center; padding: 1rem;'>No matching books found.</td></tr>";
+          updatePaginationControls(0);
           return;
         }
 
-        tbody.innerHTML = filtered.map(book => {
+        // Calculate Pagination Slices
+        const totalItems = filtered.length;
+        const isAll = itemsPerPage === "all";
+        const limit = isAll ? totalItems : parseInt(itemsPerPage);
+        const totalPages = isAll ? 1 : Math.ceil(totalItems / limit);
+
+        if (currentPage > totalPages) currentPage = totalPages || 1;
+
+        const startIndex = isAll ? 0 : (currentPage - 1) * limit;
+        const endIndex = isAll ? totalItems : Math.min(startIndex + limit, totalItems);
+        const paginatedItems = filtered.slice(startIndex, endIndex);
+
+        tbody.innerHTML = paginatedItems.map(book => {
           const isAvail = (book.status || "Available") === "Available";
           const borrowerInfo = !isAvail && book.borrowername ? `${book.borrowername} (${book.borrowerflat || 'N/A'})` : "-";
           return `
@@ -343,7 +432,41 @@
             </tr>
           `;
         }).join("");
+
+        updatePaginationControls(totalItems);
       }
+
+      function updatePaginationControls(totalItems) {
+        const pageInfo = document.getElementById("pageInfo");
+        const prevBtn = document.getElementById("prevPageBtn");
+        const nextBtn = document.getElementById("nextPageBtn");
+
+        if (totalItems === 0) {
+          pageInfo.textContent = "0 of 0";
+          prevBtn.disabled = true;
+          nextBtn.disabled = true;
+          return;
+        }
+
+        const isAll = itemsPerPage === "all";
+        const limit = isAll ? totalItems : parseInt(itemsPerPage);
+        const totalPages = isAll ? 1 : Math.ceil(totalItems / limit);
+
+        pageInfo.textContent = `Page ${currentPage} of ${totalPages} (${totalItems} items)`;
+        prevBtn.disabled = currentPage === 1;
+        nextBtn.disabled = currentPage === totalPages || isAll;
+      }
+
+      function changePage(direction) {
+        currentPage += direction;
+        renderCatalog();
+      }
+
+      document.getElementById("itemsPerPage").addEventListener("change", (e) => {
+        itemsPerPage = e.target.value === "all" ? "all" : parseInt(e.target.value);
+        currentPage = 1;
+        renderCatalog();
+      });
 
       function handleAction(encodedTitle, encodedAuthor, isAvail) {
         const title = decodeURIComponent(encodedTitle);
@@ -415,9 +538,20 @@
         }
       });
 
-      document.getElementById("searchInput").addEventListener("input", renderCatalog);
-      document.getElementById("genreFilter").addEventListener("change", renderCatalog);
-      document.getElementById("availableOnlyToggle").addEventListener("change", renderCatalog);
+      document.getElementById("searchInput").addEventListener("input", () => {
+        currentPage = 1;
+        renderCatalog();
+      });
+      
+      document.getElementById("genreFilter").addEventListener("change", () => {
+        currentPage = 1;
+        renderCatalog();
+      });
+      
+      document.getElementById("availableOnlyToggle").addEventListener("change", () => {
+        currentPage = 1;
+        renderCatalog();
+      });
       
       loadBooks();
     </script>
