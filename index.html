@@ -178,6 +178,20 @@
           padding-top: 0.75rem;
         }
 
+        td:last-child::before {
+          display: none;
+        }
+
+        td[colspan] {
+          display: block;
+          justify-content: center;
+          text-align: center;
+        }
+
+        td[colspan]::before {
+          display: none;
+        }
+
         td::before {
           content: attr(data-label);
           font-weight: bold;
@@ -295,7 +309,7 @@
 
     <h2>Book Catalog</h2>
     <div class="controls">
-      <input type="text" id="searchInput" placeholder="Search book title or author..." />
+      <input type="text" id="searchInput" placeholder="Search book title..." />
       <select id="genreFilter"><option value="">All Genres</option></select>
       <label class="checkbox-label">
         <input type="checkbox" id="availableOnlyToggle" />
@@ -310,8 +324,9 @@
           <th>Book Title</th>
           <th>Author</th>
           <th>Genre</th>
+          <th>Added By</th>
           <th>Status</th>
-          <th>Current Borrower</th>
+          <th>Borrower</th>
           <th>Action</th>
         </tr>
       </thead>
@@ -342,7 +357,6 @@
       <div class="modal-box">
         <h3 style="margin: 0;">Borrow Book</h3>
         <p id="modalBookTitle" style="margin: 0; font-size: 0.9rem; color: #666;"></p>
-        <input type="text" id="borrowerName" placeholder="Your Name" required />
         <input type="text" id="flatNumber" placeholder="Flat No. (e.g. A-402)" required />
         <div class="modal-actions">
           <button type="button" onclick="closeModal()">Cancel</button>
@@ -362,14 +376,14 @@
 
       async function loadBooks() {
         const tbody = document.getElementById("booksTableBody");
-        tbody.innerHTML = "<tr><td colspan='6' style='text-align: center; padding: 1rem;'>Loading catalog...</td></tr>";
+        tbody.innerHTML = "<tr><td colspan='7' style='text-align: center; padding: 1rem;'>Loading catalog...</td></tr>";
         try {
           const res = await fetch(API_URL);
           allBooks = await res.json();
           populateGenres(allBooks);
           renderCatalog();
         } catch (err) {
-          tbody.innerHTML = "<tr><td colspan='6' style='text-align: center; color: var(--danger); padding: 1rem;'>Error loading catalog.</td></tr>";
+          tbody.innerHTML = "<tr><td colspan='7' style='text-align: center; color: var(--danger); padding: 1rem;'>Error loading catalog.</td></tr>";
         }
       }
 
@@ -383,19 +397,19 @@
 
       function renderCatalog() {
         const tbody = document.getElementById("booksTableBody");
-        const search = document.getElementById("searchInput").value.toLowerCase();
+        const search = document.getElementById("searchInput").value.toLowerCase().trim();
         const genre = document.getElementById("genreFilter").value.toLowerCase();
         const onlyAvailable = document.getElementById("availableOnlyToggle").checked;
 
         const filtered = allBooks.filter(b => {
-          const matchesSearch = (b.title || "").toLowerCase().includes(search) || (b.author || "").toLowerCase().includes(search);
+          const matchesSearch = (b.title || "").toLowerCase().includes(search);
           const matchesGenre = !genre || (b.genre || "").toLowerCase() === genre;
           const matchesAvailability = !onlyAvailable || (b.status || "Available") === "Available";
           return matchesSearch && matchesGenre && matchesAvailability;
         });
 
         if (!filtered.length) {
-          tbody.innerHTML = "<tr><td colspan='6' style='text-align: center; padding: 1rem;'>No matching books found.</td></tr>";
+          tbody.innerHTML = "<tr><td colspan='7' style='text-align: center; padding: 1rem;'>No matching books found.</td></tr>";
           updatePaginationControls(0);
           return;
         }
@@ -414,18 +428,21 @@
 
         tbody.innerHTML = paginatedItems.map(book => {
           const isAvail = (book.status || "Available") === "Available";
-          const borrowerInfo = !isAvail && book.borrowername ? `${book.borrowername} (${book.borrowerflat || 'N/A'})` : "-";
+          const borrowerInfo = !isAvail && book.borrowerflat ? book.borrowerflat : "-";
+          const addedBy = book.addedbyflat || "-";
+
           return `
             <tr>
               <td data-label="Book Title"><strong>${book.title || ""}</strong></td>
               <td data-label="Author">${book.author || "-"}</td>
               <td data-label="Genre">${book.genre || "-"}</td>
+              <td data-label="Added By">${addedBy}</td>
               <td data-label="Status"><span style="color: ${isAvail ? 'var(--success)' : 'var(--danger)'}; font-weight: bold;">${book.status || "Available"}</span></td>
               <td data-label="Borrower">${borrowerInfo}</td>
               <td data-label="Action">
                 <button
                   style="background:${isAvail ? 'var(--success)' : 'var(--secondary)'}; color:white; border:none;"
-                  onclick="handleAction('${encodeURIComponent(book.title)}', '${encodeURIComponent(book.author)}', ${isAvail})">
+                  onclick="handleAction('${encodeURIComponent(book.title || "")}', '${encodeURIComponent(book.author || "")}', ${isAvail})">
                   ${isAvail ? 'Borrow' : 'Return'}
                 </button>
               </td>
@@ -473,32 +490,30 @@
         const author = decodeURIComponent(encodedAuthor);
         if (isAvail) {
           activeBook = { title, author };
-          document.getElementById("modalBookTitle").textContent = `"${title}" by ${author}`;
+          document.getElementById("modalBookTitle").textContent = author ? `"${title}" by ${author}` : `"${title}"`;
           document.getElementById("borrowModal").style.display = "flex";
         } else {
           if (confirm(`Return "${title}" to the library?`)) {
-            submitStatusUpdate(title, author, "", "");
+            submitStatusUpdate(title, author, "");
           }
         }
       }
 
       function closeModal() {
         document.getElementById("borrowModal").style.display = "none";
-        document.getElementById("borrowerName").value = "";
         document.getElementById("flatNumber").value = "";
         activeBook = null;
       }
 
       document.getElementById("confirmBorrowBtn").addEventListener("click", async () => {
-        const name = document.getElementById("borrowerName").value.trim();
         const flat = document.getElementById("flatNumber").value.trim();
-        if (!name || !flat) return alert("Please fill in your name and flat number.");
-        await submitStatusUpdate(activeBook.title, activeBook.author, name, flat);
+        if (!flat) return alert("Please fill in your flat number.");
+        await submitStatusUpdate(activeBook.title, activeBook.author, flat);
         closeModal();
       });
 
-      async function submitStatusUpdate(title, author, borrowerName, flatNumber) {
-        const payload = { action: "toggleStatus", title, author, borrowerName, flatNumber };
+      async function submitStatusUpdate(title, author, flatNumber = "") {
+        const payload = { action: "toggleStatus", title, author, flatNumber };
         try {
           await fetch(API_URL, {
             method: "POST",
