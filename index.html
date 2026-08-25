@@ -367,23 +367,27 @@
 
     <script>
       const API_URL = "https://script.google.com/macros/s/AKfycbzGIsnWP3E2OL5X2sjz1CSV92imrxDRYimw4L0BAlO4igFAOtM-6CgGoNA_juyvdMxS/exec";
-      let allBooks = [];
+      let allBooks = JSON.parse(localStorage.getItem("folium_books") || "[]");
       let activeBook = null;
 
-      // Pagination state variables
       let currentPage = 1;
       let itemsPerPage = 10;
 
       async function loadBooks() {
         const tbody = document.getElementById("booksTableBody");
-        tbody.innerHTML = "<tr><td colspan='7' style='text-align: center; padding: 1rem;'>Loading catalog...</td></tr>";
+        if (!allBooks.length) {
+          tbody.innerHTML = "<tr><td colspan='7' style='text-align: center; padding: 1rem;'>Loading catalog...</td></tr>";
+        }
         try {
           const res = await fetch(API_URL);
           allBooks = await res.json();
+          localStorage.setItem("folium_books", JSON.stringify(allBooks));
           populateGenres(allBooks);
           renderCatalog();
         } catch (err) {
-          tbody.innerHTML = "<tr><td colspan='7' style='text-align: center; color: var(--danger); padding: 1rem;'>Error loading catalog.</td></tr>";
+          if (!allBooks.length) {
+            tbody.innerHTML = "<tr><td colspan='7' style='text-align: center; color: var(--danger); padding: 1rem;'>Error loading catalog.</td></tr>";
+          }
         }
       }
 
@@ -414,7 +418,6 @@
           return;
         }
 
-        // Calculate Pagination Slices
         const totalItems = filtered.length;
         const isAll = itemsPerPage === "all";
         const limit = isAll ? totalItems : parseInt(itemsPerPage);
@@ -567,7 +570,11 @@
         currentPage = 1;
         renderCatalog();
       });
-      
+
+      if (allBooks.length) {
+        populateGenres(allBooks);
+        renderCatalog();
+      }
       loadBooks();
     </script>
   </body>
